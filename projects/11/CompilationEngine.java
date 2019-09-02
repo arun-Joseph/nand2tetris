@@ -13,7 +13,8 @@ public class CompilationEngine {
     private KeyWord funcType;
     private String funcName;
     private String retType;
-    private int classLabel;
+    private int whileLabel;
+    private int ifLabel;
 
     /**
      * Creates a new compilation engine.
@@ -31,7 +32,8 @@ public class CompilationEngine {
 
         try {
             symbolTable = new SymbolTable();
-            classLabel = 0;
+            whileLabel = 0;
+            ifLabel = 0;
             compileClass();
         } catch (Exception e) {
             System.out.println("Error: " + e.getMessage());
@@ -146,9 +148,16 @@ public class CompilationEngine {
         tokenizer.advance();
         if (tokenizer.tokenType() != TokenType.KEYWORD || (tokenizer.keyWord() != KeyWord.CONSTRUCTOR
                 && tokenizer.keyWord() != KeyWord.FUNCTION && tokenizer.keyWord() != KeyWord.METHOD)) {
-            error("(constructor | function | method");
+            error("(constructor | function | method)");
         }
         funcType = tokenizer.keyWord();
+        symbolTable.startSubroutine();
+        whileLabel = 0;
+        ifLabel = 0;
+
+        if (funcType == KeyWord.METHOD) {
+            symbolTable.define("this", className, Kind.ARG);
+        }
 
         tokenizer.advance();
         if (tokenizer.tokenType() == TokenType.KEYWORD
@@ -357,9 +366,8 @@ public class CompilationEngine {
 
         tokenizer.advance();
         if (tokenizer.tokenType() == TokenType.SYMBOL && tokenizer.symbol() == '[') {
-            writer.writePush(kind.abbr(), symbolTable.IndexOf(name));
-
             compileExpression();
+            writer.writePush(kind.abbr(), symbolTable.IndexOf(name));
             writer.writeArithmetic("add");
 
             tokenizer.advance();
@@ -395,7 +403,7 @@ public class CompilationEngine {
      * Compiles an if statement.
      */
     public void compileIf() throws Exception {
-        String label = getLabel();
+        int label = getIfLabel();
 
         tokenizer.advance();
         if (tokenizer.tokenType() != TokenType.KEYWORD || tokenizer.keyWord() != KeyWord.IF) {
@@ -414,8 +422,9 @@ public class CompilationEngine {
             error(")");
         }
 
-        writer.writeArithmetic("not");
-        writer.writeIf(label);
+        writer.writeIf("IF_TRUE" + label);
+        writer.writeGoto("IF_FALSE" + label);
+        writer.writeLabel("IF_TRUE" + label);
 
         tokenizer.advance();
         if (tokenizer.tokenType() != TokenType.SYMBOL || tokenizer.symbol() != '{') {
@@ -431,15 +440,13 @@ public class CompilationEngine {
 
         tokenizer.advance();
         if (tokenizer.tokenType() == TokenType.KEYWORD && tokenizer.keyWord() == KeyWord.ELSE) {
-            String label2 = getLabel();
-            writer.writeGoto(label2);
-            writer.writeLabel(label);
-
             tokenizer.advance();
             if (tokenizer.tokenType() != TokenType.SYMBOL || tokenizer.symbol() != '{') {
                 error("{");
             }
 
+            writer.writeGoto("IF_END" + label);
+            writer.writeLabel("IF_FALSE" + label);
             compileStatements();
 
             tokenizer.advance();
@@ -447,19 +454,21 @@ public class CompilationEngine {
                 error("}");
             }
 
-            writer.writeLabel(label2);
+            writer.writeLabel("IF_END" + label);
         } else {
-            writer.writeLabel(label);
+            writer.writeLabel("IF_FALSE" + label);
             tokenizer.retrace();
         }
+
     }
 
     /**
      * Compiles a while statement.
      */
     public void compileWhile() throws Exception {
-        String label1 = getLabel();
-        String label2 = getLabel();
+        int label = getWhileLabel();
+        String label1 = "WHILE_EXP" + label;
+        String label2 = "WHILE_END" + label;
 
         tokenizer.advance();
         if (tokenizer.tokenType() != TokenType.KEYWORD || tokenizer.keyWord() != KeyWord.WHILE) {
@@ -544,8 +553,8 @@ public class CompilationEngine {
                 error(")");
             }
         } else if (tokenizer.tokenType() == TokenType.SYMBOL && tokenizer.symbol() == '(') {
-            int paramCount = compileExpressionList();
             writer.writePush("pointer", 0);
+            int paramCount = compileExpressionList();
             writer.writeCall(className + "." + name, paramCount + 1);
 
             tokenizer.advance();
@@ -683,9 +692,10 @@ public class CompilationEngine {
                 if (kind == Kind.NONE) {
                     error("identifier");
                 }
-                writer.writePush(kind.abbr(), symbolTable.IndexOf(name));
 
                 compileExpression();
+
+                writer.writePush(kind.abbr(), symbolTable.IndexOf(name));
                 writer.writeArithmetic("add");
                 writer.writePop("pointer", 1);
                 writer.writePush("that", 0);
@@ -798,10 +808,17 @@ public class CompilationEngine {
     }
 
     /**
-     * @return the next label.
+     * @return the next while label.
      */
-    private String getLabel() {
-        return "L" + (classLabel++);
+    private int getWhileLabel() {
+        return whileLabel++;
+    }
+
+    /**
+     * @return the next if label.
+     */
+    private int getIfLabel() {
+        return ifLabel++;
     }
 
     /**

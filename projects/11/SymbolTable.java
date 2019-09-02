@@ -49,7 +49,6 @@ public class SymbolTable {
             subroutineSymbols.put(name, new Symbol(type, kind, argCount++));
         } else if (kind == Kind.VAR) {
             subroutineSymbols.put(name, new Symbol(type, kind, varCount++));
-
         }
     }
 

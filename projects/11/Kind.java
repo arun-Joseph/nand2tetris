@@ -1,5 +1,5 @@
 public enum Kind {
-    STATIC("static"), FIELD("field"), ARG("argument"), VAR("local"), NONE("");
+    STATIC("static"), FIELD("this"), ARG("argument"), VAR("local"), NONE("");
 
     private String kind;
 
